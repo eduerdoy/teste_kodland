@@ -10,10 +10,13 @@ GRAVITY = 0.8
 JUMP_SPEED = -15
 MOVE_SPEED = 5
 ANIMATION_SPEED = 0.1
+ENEMY_ANIMATION_SPEED = 0.03
+BROTHER_ANIMATION_SPEED = 0.03
 PLATFORM_IMAGE = 'platform'
 ENEMY_SPEED = 1
 FLOOR_COLOR = (100, 50, 0)  
-BROTHER_POS = (450, HEIGHT - 85)
+BROTHER_POS = (450, HEIGHT - 80)
+RESTART_BUTTON_POS = Rect((WIDTH/2 - 100, HEIGHT/2 + 100), (200, 50))
 
 
 player = Actor('player_sprite')
@@ -27,8 +30,8 @@ player.current_frame = 0
 
 brother = Actor('brother_idle')
 brother.pos = BROTHER_POS
-
-
+brother.animation_time = 0
+brother.current_frame = 0
 
 BUTTON_WIDTH = 200
 BUTTON_HEIGHT = 50
@@ -43,12 +46,13 @@ INITIAL_ENEMIES = [
     {'pos': (670, HEIGHT-290)}
 ]
 
-
 last_start_hover = False
 last_exit_hover = False
 last_music_hover = False
 start_hover = False
 exit_hover = False
+restart_hover = False
+last_restart_hover = False
 
 MUSIC_BUTTON_RADIUS = 25
 music_playing = True
@@ -59,9 +63,9 @@ start_button_pos = Rect((WIDTH/2 - BUTTON_WIDTH/2, HEIGHT/2 - 60), (BUTTON_WIDTH
 exit_button_pos = Rect((WIDTH/2 - BUTTON_WIDTH/2, HEIGHT/2 + 20), (BUTTON_WIDTH, BUTTON_HEIGHT))
 
 platforms = [
-    Rect((150, HEIGHT-100), (120, 20)),  # Plataforma média
-    Rect((300, HEIGHT-150), (120, 20)),  # Plataforma média
-    Rect((450, HEIGHT-200), (120, 20)),  # Plataforma alta
+    Rect((150, HEIGHT-100), (120, 20)),  
+    Rect((300, HEIGHT-150), (120, 20)), 
+    Rect((450, HEIGHT-200), (120, 20)),  
     Rect((600, HEIGHT-250), (120, 20)),  # Plataforma alta
     Rect((750, HEIGHT-115), (120, 20)),  # Plataforma alta
 ]
@@ -74,7 +78,10 @@ def reset_enemies():
         enemy.direction = -1
         enemy.start_x = enemy.x
         enemy.patrol_distance = 50
+        enemy.animation_time = 0
+        enemy.current_frame = 0
         enemies.append(enemy)    
+
 
 enemies = []
 reset_enemies()
@@ -93,14 +100,15 @@ def update():
         music.play('theme')
         music.set_volume(0.5)
 
+    if GAME_ACTIVE and not GAME_WON:
 
-    if GAME_ACTIVE:
-
-
-        if player.colliderect(brother):
+       
+        update_brother_animation()
+      
+        if player.colliderect(brother) and not GAME_WON :
             GAME_WON = True
             sounds.win.play()
-            sounds.win.set_volume(0.5)
+            
 
         old_x = player.x
         old_y = player.y
@@ -140,7 +148,8 @@ def update():
                     player.left = platform.right
 
         for enemy in enemies: 
-            enemy.x += ENEMY_SPEED * enemy.direction           
+            enemy.x += ENEMY_SPEED * enemy.direction
+            update_enemy_animation(enemy)           
 
             if enemy.x > enemy.start_x + enemy.patrol_distance:
                 enemy.direction = -1
@@ -154,17 +163,18 @@ def update():
                         player.vy = JUMP_SPEED * 0.7
                         
                 else:
+                        sounds.lose.play()
                         player.pos = (0, HEIGHT-50)
                         player.vy = 0
                         reset_enemies()
 
 
-        if keyboard.left:
+        if keyboard.a:
             player.x -= MOVE_SPEED
             player.facing_right = False
             update_player_animation('walk')
           
-        elif keyboard.right:
+        elif keyboard.d:
             player.x += MOVE_SPEED
             player.facing_right = True
             update_player_animation('walk')
@@ -218,6 +228,7 @@ def draw_menu():
 def draw_game():
     screen.clear()  
     screen.blit(background, (0, 0))
+
     floor_rect = Rect((0, HEIGHT - 30 ), (WIDTH, 60))
     screen.draw.filled_rect(floor_rect, FLOOR_COLOR)
     for platform in platforms:
@@ -226,6 +237,7 @@ def draw_game():
         enemy.draw()
     brother.draw()
     player.draw()
+
     music_color = MUSIC_HOVER if music_hover else MUSIC_COLOR
     screen.draw.filled_circle(music_button_pos, MUSIC_BUTTON_RADIUS, music_color)
 
@@ -235,10 +247,20 @@ def draw_game():
         screen.draw.text("Unmute", center=music_button_pos, fontsize=20, color="white")
 
     if GAME_WON:
+        screen.draw.filled_rect(Rect((0, 0), (WIDTH, HEIGHT)), (0, 0, 0, 180))
+        if not music_playing:
+            sounds.win.set_volume(0)
         screen.draw.text("YOU SAVED YOUR BROTHER!", 
                         center=(WIDTH/2, HEIGHT/2), 
                         fontsize=60, 
                         color="yellow")
+        
+        restart_color = START_HOVER if restart_hover else START_COLOR
+        screen.draw.filled_rect(RESTART_BUTTON_POS, restart_color)
+        screen.draw.text("MENU", 
+                        center=(WIDTH/2, HEIGHT/2 + 125), 
+                        fontsize=40, 
+                        color="white")
 
 def draw():
     if GAME_ACTIVE:
@@ -246,11 +268,9 @@ def draw():
     else:
         draw_menu()
 
-
-
 def on_mouse_move(pos):
-    global start_hover, exit_hover, music_hover
-    global last_start_hover, last_exit_hover, last_music_hover
+    global start_hover, exit_hover, music_hover, restart_hover
+    global last_start_hover, last_exit_hover, last_music_hover, last_restart_hover
 
     last_start_hover = start_hover
     last_exit_hover = exit_hover
@@ -267,10 +287,16 @@ def on_mouse_move(pos):
         if (start_hover and not last_start_hover) or \
            (exit_hover and not last_exit_hover) or \
            (music_hover and not last_music_hover):
-            sounds.hover.play()
+           sounds.hover.play()
+
+    if GAME_WON:
+        last_restart_hover = restart_hover
+        restart_hover = RESTART_BUTTON_POS.collidepoint(pos)
+        if restart_hover and not last_restart_hover:
+            sounds.hover.play()       
 
 def on_mouse_down(pos):
-    global music_playing, GAME_ACTIVE
+    global music_playing, GAME_ACTIVE, GAME_WON 
     
 
     dx = pos[0] - music_button_pos[0]
@@ -281,12 +307,16 @@ def on_mouse_down(pos):
         if music_playing:
             music.set_volume(1)
             sounds.hover.set_volume(1)
+            sounds.jump.set_volume(1)
+            sounds.lose.set_volume(1)
+            sounds.win.set_volume(1)
        
         else:
             music.set_volume(0)
-            sounds.hover.set_volume(0)
-     
-
+            sounds.jump.set_volume(0)
+            sounds.lose.set_volume(0)
+            sounds.win.set_volume(0)
+           
     if not GAME_ACTIVE:
         if start_button_pos.collidepoint(pos):
             GAME_ACTIVE = True
@@ -295,12 +325,20 @@ def on_mouse_down(pos):
         if exit_button_pos.collidepoint(pos):
             exit()
 
+    if GAME_WON and RESTART_BUTTON_POS.collidepoint(pos):
+        # Reseta o jogo
+        GAME_WON = False
+        GAME_ACTIVE = False
+        player.pos = (0, HEIGHT-50)
+        player.vy = 0
+        reset_enemies()          
+
 def on_key_down(key):
-    if GAME_ACTIVE and key == keys.SPACE and player.on_ground:
+    if GAME_ACTIVE and key == keys.W and player.on_ground:
         player.vy = JUMP_SPEED
         player.on_ground = False    
         player.is_jumping = True  
-        sounds.hover.play()  
+        sounds.jump.play()  
         player.image = 'player_jump_right' if player.facing_right else 'player_jump_left'
                   
 def update_player_animation(state):
@@ -328,3 +366,27 @@ def update_player_animation(state):
     # Aplica o sprite atual
     player.image = frames[player.current_frame]
 
+def update_brother_animation():
+    brother.animation_time += BROTHER_ANIMATION_SPEED
+    frames = ['brother_idle', 'brother_idle2']  
+
+    if brother.animation_time >= 1:
+        brother.animation_time = 0
+        brother.current_frame = (brother.current_frame + 1) % len(frames)
+    
+    brother.image = frames[brother.current_frame]
+
+def update_enemy_animation(enemy):
+    enemy.animation_time += ENEMY_ANIMATION_SPEED
+    
+    # Frames baseados na direção do movimento
+    if enemy.direction == 1:
+        frames = ['enemy_walk_right1', 'enemy_walk_right2']
+    else:
+        frames = ['enemy_walk_left1', 'enemy_walk_left2']
+
+    if enemy.animation_time >= 1:
+        enemy.animation_time = 0
+        enemy.current_frame = (enemy.current_frame + 1) % len(frames)
+    
+    enemy.image = frames[enemy.current_frame]
